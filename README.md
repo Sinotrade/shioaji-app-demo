@@ -2,7 +2,13 @@
 
 A Vite + React + Tailwind CSS template for building custom apps on the [Shioaji](https://sinotrade.github.io/) API server.
 
-This demo includes a live market data streaming panel with subscribe/connect controls — use it as a starting point for your own trading dashboards.
+## Features
+
+- **Health Check** — server status, version, uptime
+- **Market Data Streaming** — subscribe to stocks, real-time tick table with microsecond timestamps
+- **Side-by-side layout** — controls on left, 10-row tick table on right (empty rows shown as placeholders)
+- **Theme sync** — shares light/dark theme with the Shioaji dashboard
+- **Dashboard navigation** — "← Dashboard" link for seamless switching
 
 ## Quick Start
 
@@ -43,11 +49,11 @@ curl -X POST http://localhost:8080/api/v1/apps/demo \
 
 ## Dashboard Integration
 
-Custom apps run alongside the Shioaji Dashboard and share the same server. Here's how they integrate:
+Custom apps run alongside the Shioaji Dashboard and share the same server.
 
 ### Theme Sync
 
-Apps share the dashboard's light/dark theme via `localStorage`. The `use-theme.ts` hook reads `localStorage.getItem("theme")` and applies the `.dark` CSS class — identical to the dashboard. When a user toggles theme in either the dashboard or your app, both reflect the change.
+Apps share the dashboard's light/dark theme via `localStorage`. The `use-theme.ts` hook reads `localStorage.getItem("theme")` and applies the `.dark` CSS class. When a user toggles theme in either the dashboard or your app, both reflect the change.
 
 ### Navigation
 
@@ -66,11 +72,9 @@ export default defineConfig({
 })
 ```
 
-All asset paths (JS, CSS, fonts, images) will be resolved relative to this base.
-
 ### API Proxy (Dev Mode)
 
-In development, Vite proxies `/api` requests to `http://localhost:8080` so you can run the app with `pnpm dev` and hit the real API:
+In development, Vite proxies `/api` requests to `http://localhost:8080`:
 
 ```ts
 server: {
@@ -82,14 +86,43 @@ server: {
 
 ### CSS Theme Variables
 
-The CSS uses the same oklch color variables as the dashboard. Copy `src/index.css` as your starting point — it includes all the `:root` and `.dark` variables for `--background`, `--foreground`, `--card`, `--primary`, `--muted`, `--border`, `--destructive`, etc.
+The CSS uses the same oklch color variables as the dashboard. Copy `src/index.css` as your starting point — it includes all `:root` and `.dark` variables.
+
+### SSE Streaming
+
+SSE events use **named event types** (e.g. `event:tick_stk`). Use `addEventListener` instead of `onmessage`:
+
+```ts
+const es = new EventSource("/api/v1/stream/data/tick_stk")
+
+// Named events require addEventListener (onmessage won't work)
+es.addEventListener("tick_stk", (event) => {
+  const tick = JSON.parse(event.data)
+  // tick: { code, date, time, close, volume, tick_type, ... }
+})
+```
+
+Subscribe before connecting:
+
+```ts
+await fetch("/api/v1/stream/subscribe", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    security_type: "STK",
+    exchange: "TSE",
+    code: "2330",
+    quote_type: "Tick",
+  }),
+})
+```
 
 ## Customize
 
 1. **App name**: Change `base` in `vite.config.ts` to `/apps/your-app-name/`
 2. **Theme**: Already synced with dashboard via `localStorage`
 3. **REST API**: Use `fetch('/api/v1/...')` — see `src/App.tsx` for examples
-4. **Streaming**: Subscribe with `POST /api/v1/stream/subscribe`, then connect with `EventSource('/api/v1/stream/data/tick_stk')`
+4. **Streaming**: Subscribe with `POST /api/v1/stream/subscribe`, connect with `EventSource`, listen with `addEventListener`
 5. **Components**: Add shadcn components with `npx shadcn add <component>`
 
 ## Stack
@@ -103,7 +136,7 @@ The CSS uses the same oklch color variables as the dashboard. Copy `src/index.cs
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/health` | GET | Server health check |
-| `/api/v1/stream/subscribe` | POST | Subscribe to market data (tick/bidask) |
+| `/api/v1/stream/subscribe` | POST | Subscribe to market data |
 | `/api/v1/stream/unsubscribe` | POST | Unsubscribe from market data |
 | `/api/v1/stream/data/tick_stk` | GET (SSE) | Real-time stock tick stream |
 | `/api/v1/stream/data/bidask_stk` | GET (SSE) | Real-time stock bid/ask stream |
@@ -116,5 +149,35 @@ The CSS uses the same oklch color variables as the dashboard. Copy `src/index.cs
 | `/api/v1/portfolio/position_unit` | POST | Current positions |
 | `/api/v1/apps` | GET | List installed apps |
 | `/docs` | GET | Full API documentation (Scalar UI) |
+
+### Subscribe Request Format
+
+```json
+{
+  "security_type": "STK",
+  "exchange": "TSE",
+  "code": "2330",
+  "quote_type": "Tick"
+}
+```
+
+### Tick Data Format
+
+```json
+{
+  "code": "2330",
+  "date": "2026-03-23",
+  "time": "11:01:46.950017",
+  "close": "1800",
+  "volume": 1,
+  "tick_type": 1,
+  "high": "1810",
+  "low": "1785",
+  "amount": "1800000"
+}
+```
+
+- `tick_type`: 1 = Buy, 2 = Sell
+- `time`: microsecond precision (`HH:MM:SS.ffffff`)
 
 See the full API reference at `http://localhost:8080/docs`.
