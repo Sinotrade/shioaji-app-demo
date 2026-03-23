@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTheme } from "@/hooks/use-theme"
 
 interface HealthData {
@@ -7,40 +7,92 @@ interface HealthData {
   version?: string
 }
 
+interface TickData {
+  code: string
+  datetime: string
+  close: number
+  volume: number
+  tick_type: number
+  raw?: string
+}
+
+function parseTick(data: string): TickData | null {
+  try {
+    const parsed = JSON.parse(data)
+    return { ...parsed, raw: data }
+  } catch {
+    return { code: "?", datetime: new Date().toISOString(), close: 0, volume: 0, tick_type: 0, raw: data }
+  }
+}
+
 function App() {
   const { theme, toggleTheme } = useTheme()
   const [health, setHealth] = useState<HealthData | null>(null)
   const [healthError, setHealthError] = useState<string | null>(null)
-  const [ticks, setTicks] = useState<string[]>([])
-  const [sseConnected, setSseConnected] = useState(false)
 
-  // Fetch health check
+  // Subscribe
+  const [subCode, setSubCode] = useState("2330")
+  const [subStatus, setSubStatus] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [subscribing, setSubscribing] = useState(false)
+
+  // Streaming
+  const [ticks, setTicks] = useState<TickData[]>([])
+  const [sseConnected, setSseConnected] = useState(false)
+  const esRef = useRef<EventSource | null>(null)
+
   useEffect(() => {
     fetch("/api/v1/health")
       .then((r) => r.json())
-      .then((data) => {
-        setHealth(data)
-        setHealthError(null)
-      })
+      .then((data) => { setHealth(data); setHealthError(null) })
       .catch((e) => setHealthError(e.message))
   }, [])
 
-  // SSE streaming example
+  const handleSubscribe = async () => {
+    if (!subCode.trim()) return
+    setSubscribing(true)
+    setSubStatus(null)
+    try {
+      const res = await fetch("/api/v1/stream/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contract: { code: subCode.trim() },
+          quote_type: "tick",
+        }),
+      })
+      if (res.ok) {
+        setSubStatus({ type: "success", message: `Subscribed to ${subCode.trim()}` })
+      } else {
+        const err = await res.json().catch(() => ({ message: res.statusText }))
+        setSubStatus({ type: "error", message: err.message || res.statusText })
+      }
+    } catch (e) {
+      setSubStatus({ type: "error", message: String(e) })
+    } finally {
+      setSubscribing(false)
+    }
+  }
+
   const connectSSE = () => {
+    if (esRef.current) { esRef.current.close() }
     const es = new EventSource("/api/v1/stream/data/tick_stk")
+    esRef.current = es
     setSseConnected(true)
+    setTicks([])
     es.onmessage = (event) => {
-      setTicks((prev) => [event.data, ...prev].slice(0, 20))
+      const tick = parseTick(event.data)
+      if (tick) setTicks((prev) => [tick, ...prev].slice(0, 100))
     }
-    es.onerror = () => {
-      setSseConnected(false)
-      es.close()
-    }
+    es.onerror = () => { setSseConnected(false); es.close(); esRef.current = null }
+  }
+
+  const disconnectSSE = () => {
+    if (esRef.current) { esRef.current.close(); esRef.current = null }
+    setSseConnected(false)
   }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header with Dashboard link */}
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-screen-xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
@@ -95,7 +147,7 @@ function App() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
-                <span className={health.status === "ok" ? "text-green-500 font-medium" : "text-destructive"}>
+                <span className={health.status === "healthy" ? "text-green-500 font-medium" : "text-destructive"}>
                   {health.status}
                 </span>
               </div>
@@ -113,51 +165,140 @@ function App() {
           )}
         </div>
 
+        {/* Subscribe + Stream */}
+        <div className="rounded-lg border bg-card p-6 text-card-foreground">
+          <h2 className="mb-4 text-lg font-semibold">Market Data Streaming</h2>
+
+          {/* Subscribe */}
+          <div className="mb-4 space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Subscribe to a stock code to receive real-time tick data via SSE.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Stock code (e.g. 2330)"
+                value={subCode}
+                onChange={(e) => setSubCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
+                className="h-9 w-32 rounded-md border bg-transparent px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button
+                onClick={handleSubscribe}
+                disabled={subscribing}
+                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {subscribing ? "..." : "Subscribe"}
+              </button>
+              {!sseConnected ? (
+                <button
+                  onClick={connectSSE}
+                  className="h-9 rounded-md border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  Connect Stream
+                </button>
+              ) : (
+                <button
+                  onClick={disconnectSSE}
+                  className="h-9 rounded-md border border-destructive px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground"
+                >
+                  Disconnect
+                </button>
+              )}
+              {sseConnected && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-green-500">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              )}
+            </div>
+            {subStatus && (
+              <p className={`text-xs ${subStatus.type === "error" ? "text-destructive" : "text-green-500"}`}>
+                {subStatus.message}
+              </p>
+            )}
+          </div>
+
+          {/* Tick Stream Panel */}
+          {ticks.length > 0 ? (
+            <div className="rounded-md border">
+              <div className="grid grid-cols-5 gap-2 border-b bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+                <span>Code</span>
+                <span>Time</span>
+                <span className="text-right">Price</span>
+                <span className="text-right">Volume</span>
+                <span className="text-right">Type</span>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {ticks.map((tick, i) => (
+                  <div
+                    key={i}
+                    className={`grid grid-cols-5 gap-2 border-b px-3 py-1.5 text-xs last:border-0 ${
+                      i === 0 ? "bg-accent/50" : ""
+                    }`}
+                  >
+                    <span className="font-medium">{tick.code}</span>
+                    <span className="text-muted-foreground">
+                      {tick.datetime ? new Date(tick.datetime).toLocaleTimeString() : "—"}
+                    </span>
+                    <span className={`text-right font-mono ${
+                      tick.tick_type === 1 ? "text-red-500" : tick.tick_type === 2 ? "text-green-500" : ""
+                    }`}>
+                      {tick.close || "—"}
+                    </span>
+                    <span className="text-right font-mono">{tick.volume || "—"}</span>
+                    <span className="text-right">
+                      {tick.tick_type === 1 ? "Buy" : tick.tick_type === 2 ? "Sell" : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t bg-muted px-3 py-1.5 text-xs text-muted-foreground">
+                {ticks.length} ticks received
+              </div>
+            </div>
+          ) : sseConnected ? (
+            <p className="text-sm text-muted-foreground">
+              Waiting for tick data... Subscribe to a contract above.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Click "Connect Stream" to start receiving real-time data.
+            </p>
+          )}
+        </div>
+
         {/* API Examples */}
         <div className="rounded-lg border bg-card p-6 text-card-foreground">
           <h2 className="mb-4 text-lg font-semibold">API Examples</h2>
           <div className="space-y-3 text-sm">
             <p className="text-muted-foreground">
-              This demo shows how to call the Shioaji HTTP API from a custom app.
               Use <code className="rounded bg-muted px-1.5 py-0.5 text-xs">fetch()</code> for REST endpoints
               and <code className="rounded bg-muted px-1.5 py-0.5 text-xs">EventSource</code> for SSE streaming.
             </p>
-            <div className="rounded-md bg-muted p-4 font-mono text-xs">
-              <div className="text-muted-foreground">// Fetch market data snapshots</div>
-              <div>{"fetch('/api/v1/data/snapshots', {"}</div>
-              <div>{"  method: 'POST',"}</div>
-              <div>{"  headers: { 'Content-Type': 'application/json' },"}</div>
-              <div>{"  body: JSON.stringify({ contracts: [{ code: '2330' }] })"}</div>
-              <div>{"}).then(r => r.json())"}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* SSE Streaming */}
-        <div className="rounded-lg border bg-card p-6 text-card-foreground">
-          <h2 className="mb-4 text-lg font-semibold">SSE Streaming</h2>
-          <div className="space-y-3">
-            <button
-              onClick={connectSSE}
-              disabled={sseConnected}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {sseConnected ? "Connected" : "Connect to Tick Stream"}
-            </button>
-            {ticks.length > 0 && (
-              <div className="max-h-60 overflow-y-auto rounded-md bg-muted p-3 font-mono text-xs">
-                {ticks.map((tick, i) => (
-                  <div key={i} className="border-b border-border py-1 last:border-0">
-                    {tick}
-                  </div>
-                ))}
+            <div className="rounded-md bg-muted p-4 font-mono text-xs space-y-4">
+              <div>
+                <div className="text-muted-foreground mb-1">// Subscribe to market data</div>
+                <div>{"fetch('/api/v1/stream/subscribe', {"}</div>
+                <div>{"  method: 'POST',"}</div>
+                <div>{"  headers: { 'Content-Type': 'application/json' },"}</div>
+                <div>{"  body: JSON.stringify({ contract: { code: '2330' }, quote_type: 'tick' })"}</div>
+                <div>{"})"}</div>
               </div>
-            )}
-            {sseConnected && ticks.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Waiting for tick data... (subscribe to a contract first via the API)
-              </p>
-            )}
+              <div>
+                <div className="text-muted-foreground mb-1">// Connect to SSE tick stream</div>
+                <div>{"const es = new EventSource('/api/v1/stream/data/tick_stk')"}</div>
+                <div>{"es.onmessage = (e) => console.log(JSON.parse(e.data))"}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground mb-1">// Fetch market data snapshots</div>
+                <div>{"fetch('/api/v1/data/snapshots', {"}</div>
+                <div>{"  method: 'POST',"}</div>
+                <div>{"  headers: { 'Content-Type': 'application/json' },"}</div>
+                <div>{"  body: JSON.stringify({ contracts: [{ code: '2330' }] })"}</div>
+                <div>{"}).then(r => r.json())"}</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -170,7 +311,7 @@ function App() {
               <li>Clone this repo and customize the components</li>
               <li>Set <code className="rounded bg-muted px-1.5 py-0.5 text-xs">base</code> in <code className="rounded bg-muted px-1.5 py-0.5 text-xs">vite.config.ts</code> to <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/apps/your-app-name/</code></li>
               <li>Run <code className="rounded bg-muted px-1.5 py-0.5 text-xs">pnpm build</code></li>
-              <li>Upload the <code className="rounded bg-muted px-1.5 py-0.5 text-xs">dist/</code> folder to the server</li>
+              <li>Upload via the Dashboard's Custom Apps card or curl</li>
               <li>Access at <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/apps/your-app-name/</code></li>
             </ol>
           </div>
