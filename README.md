@@ -150,34 +150,4 @@ await fetch("/api/v1/stream/subscribe", {
 | `/api/v1/apps` | GET | List installed apps |
 | `/docs` | GET | Full API documentation (Scalar UI) |
 
-### Subscribe Request Format
-
-```json
-{
-  "security_type": "STK",
-  "exchange": "TSE",
-  "code": "2330",
-  "quote_type": "Tick"
-}
-```
-
-### Tick Data Format
-
-```json
-{
-  "code": "2330",
-  "date": "2026-03-23",
-  "time": "11:01:46.950017",
-  "close": "1800",
-  "volume": 1,
-  "tick_type": 1,
-  "high": "1810",
-  "low": "1785",
-  "amount": "1800000"
-}
-```
-
-- `tick_type`: 1 = Buy, 2 = Sell
-- `time`: microsecond precision (`HH:MM:SS.ffffff`)
-
 See the full API reference at `http://localhost:8080/docs`.
