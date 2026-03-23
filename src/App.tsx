@@ -245,7 +245,7 @@ function App() {
                       <>
                         <span className="font-medium">{tick.code}</span>
                         <span className="text-muted-foreground">
-                          {tick.time ? tick.time.split(".")[0] : "—"}
+                          {tick.time || "—"}
                         </span>
                         <span className={`text-right font-mono ${
                           tick.tick_type === 1 ? "text-red-500" : tick.tick_type === 2 ? "text-green-500" : ""
