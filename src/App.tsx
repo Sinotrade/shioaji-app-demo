@@ -9,19 +9,18 @@ interface HealthData {
 
 interface TickData {
   code: string
-  datetime: string
+  date: string
+  time: string
   close: number
   volume: number
   tick_type: number
-  raw?: string
 }
 
 function parseTick(data: string): TickData | null {
   try {
-    const parsed = JSON.parse(data)
-    return { ...parsed, raw: data }
+    return JSON.parse(data)
   } catch {
-    return { code: "?", datetime: new Date().toISOString(), close: 0, volume: 0, tick_type: 0, raw: data }
+    return null
   }
 }
 
@@ -81,10 +80,11 @@ function App() {
     esRef.current = es
     setSseConnected(true)
     setTicks([])
-    es.onmessage = (event) => {
-      const tick = parseTick(event.data)
-      if (tick) setTicks((prev) => [tick, ...prev].slice(0, 100))
-    }
+    // Named SSE events (event:tick_stk) need addEventListener, not onmessage
+    es.addEventListener("tick_stk", (event) => {
+      const tick = parseTick((event as MessageEvent).data)
+      if (tick) setTicks((prev) => [tick, ...prev].slice(0, 10))
+    })
     es.onerror = () => { setSseConnected(false); es.close(); esRef.current = null }
   }
 
@@ -231,7 +231,7 @@ function App() {
                 <span className="text-right">Volume</span>
                 <span className="text-right">Type</span>
               </div>
-              <div className="max-h-80 overflow-y-auto">
+              <div className="overflow-y-auto">
                 {ticks.map((tick, i) => (
                   <div
                     key={i}
@@ -241,7 +241,7 @@ function App() {
                   >
                     <span className="font-medium">{tick.code}</span>
                     <span className="text-muted-foreground">
-                      {tick.datetime ? new Date(tick.datetime).toLocaleTimeString() : "—"}
+                      {tick.time ? tick.time.split(".")[0] : "—"}
                     </span>
                     <span className={`text-right font-mono ${
                       tick.tick_type === 1 ? "text-red-500" : tick.tick_type === 2 ? "text-green-500" : ""
@@ -256,7 +256,7 @@ function App() {
                 ))}
               </div>
               <div className="border-t bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-                {ticks.length} ticks received
+                {ticks.length} ticks (latest 10)
               </div>
             </div>
           ) : sseConnected ? (
