@@ -56,8 +56,10 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contract: { code: subCode.trim() },
-          quote_type: "tick",
+          security_type: "STK",
+          exchange: "TSE",
+          code: subCode.trim(),
+          quote_type: "Tick",
         }),
       })
       if (res.ok) {
@@ -282,7 +284,10 @@ function App() {
                 <div>{"fetch('/api/v1/stream/subscribe', {"}</div>
                 <div>{"  method: 'POST',"}</div>
                 <div>{"  headers: { 'Content-Type': 'application/json' },"}</div>
-                <div>{"  body: JSON.stringify({ contract: { code: '2330' }, quote_type: 'tick' })"}</div>
+                <div>{"  body: JSON.stringify({"}</div>
+                <div>{"    security_type: 'STK', exchange: 'TSE',"}</div>
+                <div>{"    code: '2330', quote_type: 'Tick'"}</div>
+                <div>{"  })"}</div>
                 <div>{"})"}</div>
               </div>
               <div>
