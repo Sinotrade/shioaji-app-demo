@@ -170,60 +170,61 @@ function App() {
         {/* Subscribe + Stream */}
         <div className="rounded-lg border bg-card p-6 text-card-foreground">
           <h2 className="mb-4 text-lg font-semibold">Market Data Streaming</h2>
-
-          {/* Subscribe */}
-          <div className="mb-4 space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Subscribe to a stock code to receive real-time tick data via SSE.
-            </p>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Stock code (e.g. 2330)"
-                value={subCode}
-                onChange={(e) => setSubCode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
-                className="h-9 w-32 rounded-md border bg-transparent px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
-              />
-              <button
-                onClick={handleSubscribe}
-                disabled={subscribing}
-                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {subscribing ? "..." : "Subscribe"}
-              </button>
-              {!sseConnected ? (
+          <div className="flex gap-6">
+            {/* Left: Controls */}
+            <div className="shrink-0 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Subscribe to a stock code to receive<br />real-time tick data via SSE.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Stock code"
+                  value={subCode}
+                  onChange={(e) => setSubCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
+                  className="h-9 w-24 rounded-md border bg-transparent px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
                 <button
-                  onClick={connectSSE}
-                  className="h-9 rounded-md border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={handleSubscribe}
+                  disabled={subscribing}
+                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
-                  Connect Stream
+                  {subscribing ? "..." : "Subscribe"}
                 </button>
-              ) : (
-                <button
-                  onClick={disconnectSSE}
-                  className="h-9 rounded-md border border-destructive px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground"
-                >
-                  Disconnect
-                </button>
-              )}
-              {sseConnected && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-green-500">
-                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  Live
-                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {!sseConnected ? (
+                  <button
+                    onClick={connectSSE}
+                    className="h-9 rounded-md border px-4 text-sm font-medium transition-colors hover:bg-muted"
+                  >
+                    Connect Stream
+                  </button>
+                ) : (
+                  <button
+                    onClick={disconnectSSE}
+                    className="h-9 rounded-md border border-destructive px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    Disconnect
+                  </button>
+                )}
+                {sseConnected && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-green-500">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    Live
+                  </span>
+                )}
+              </div>
+              {subStatus && (
+                <p className={`text-xs ${subStatus.type === "error" ? "text-destructive" : "text-green-500"}`}>
+                  {subStatus.message}
+                </p>
               )}
             </div>
-            {subStatus && (
-              <p className={`text-xs ${subStatus.type === "error" ? "text-destructive" : "text-green-500"}`}>
-                {subStatus.message}
-              </p>
-            )}
-          </div>
 
-          {/* Tick Stream Panel */}
-          {ticks.length > 0 ? (
-            <div className="rounded-md border">
+            {/* Right: Tick Table (always 10 rows) */}
+            <div className="min-w-0 flex-1 rounded-md border">
               <div className="grid grid-cols-5 gap-2 border-b bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
                 <span>Code</span>
                 <span>Time</span>
@@ -231,43 +232,45 @@ function App() {
                 <span className="text-right">Volume</span>
                 <span className="text-right">Type</span>
               </div>
-              <div className="overflow-y-auto">
-                {ticks.map((tick, i) => (
+              {Array.from({ length: 10 }).map((_, i) => {
+                const tick = ticks[i]
+                return (
                   <div
                     key={i}
                     className={`grid grid-cols-5 gap-2 border-b px-3 py-1.5 text-xs last:border-0 ${
-                      i === 0 ? "bg-accent/50" : ""
+                      tick && i === 0 ? "bg-accent/50" : ""
                     }`}
                   >
-                    <span className="font-medium">{tick.code}</span>
-                    <span className="text-muted-foreground">
-                      {tick.time ? tick.time.split(".")[0] : "—"}
-                    </span>
-                    <span className={`text-right font-mono ${
-                      tick.tick_type === 1 ? "text-red-500" : tick.tick_type === 2 ? "text-green-500" : ""
-                    }`}>
-                      {tick.close || "—"}
-                    </span>
-                    <span className="text-right font-mono">{tick.volume || "—"}</span>
-                    <span className="text-right">
-                      {tick.tick_type === 1 ? "Buy" : tick.tick_type === 2 ? "Sell" : "—"}
-                    </span>
+                    {tick ? (
+                      <>
+                        <span className="font-medium">{tick.code}</span>
+                        <span className="text-muted-foreground">
+                          {tick.time ? tick.time.split(".")[0] : "—"}
+                        </span>
+                        <span className={`text-right font-mono ${
+                          tick.tick_type === 1 ? "text-red-500" : tick.tick_type === 2 ? "text-green-500" : ""
+                        }`}>
+                          {tick.close || "—"}
+                        </span>
+                        <span className="text-right font-mono">{tick.volume || "—"}</span>
+                        <span className="text-right">
+                          {tick.tick_type === 1 ? "Buy" : tick.tick_type === 2 ? "Sell" : "—"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted-foreground/30">—</span>
+                        <span className="text-muted-foreground/30">—</span>
+                        <span className="text-right text-muted-foreground/30">—</span>
+                        <span className="text-right text-muted-foreground/30">—</span>
+                        <span className="text-right text-muted-foreground/30">—</span>
+                      </>
+                    )}
                   </div>
-                ))}
-              </div>
-              <div className="border-t bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-                {ticks.length} ticks (latest 10)
-              </div>
+                )
+              })}
             </div>
-          ) : sseConnected ? (
-            <p className="text-sm text-muted-foreground">
-              Waiting for tick data... Subscribe to a contract above.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Click "Connect Stream" to start receiving real-time data.
-            </p>
-          )}
+          </div>
         </div>
 
         {/* API Examples */}
