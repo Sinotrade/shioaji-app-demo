@@ -204,7 +204,7 @@ function App() {
                 ) : (
                   <button
                     onClick={disconnectSSE}
-                    className="h-9 rounded-md border border-destructive px-4 text-sm font-medium text-destructive transition-colors hover:bg-destructive hover:text-destructive-foreground"
+                    className="h-9 rounded-md border px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
                   >
                     Disconnect
                   </button>
